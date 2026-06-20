@@ -71,10 +71,26 @@ declare global {
       getRecentLogs: () => Promise<{ path: string; lines: string[] }>
       readDir: (path: string) => Promise<HermesReadDirResult>
       gitRoot?: (path: string) => Promise<string | null>
-      // Resolve git-worktree identity for a batch of session cwds, reading git's
-      // on-disk metadata locally. Returns null per cwd that isn't inside a
-      // checkout (or can't be read — e.g. a remote backend's path).
-      worktrees?: (cwds: string[]) => Promise<Record<string, HermesWorktreeInfo | null>>
+      // Reveal a path in the OS file manager (Finder / Explorer).
+      revealPath?: (path: string) => Promise<boolean>
+      // Git-driven worktree management for the "Start work" flow.
+      git?: {
+        worktreeList: (repoPath: string) => Promise<HermesGitWorktree[]>
+        worktreeAdd: (
+          repoPath: string,
+          options?: { name?: string; branch?: string; base?: string }
+        ) => Promise<{ path: string; branch: string; repoRoot: string }>
+        worktreeRemove: (
+          repoPath: string,
+          worktreePath: string,
+          options?: { force?: boolean }
+        ) => Promise<{ removed: string }>
+        // Repo-first discovery: scan bounded roots for git repos (depth-capped).
+        scanRepos: (
+          roots: string[],
+          options?: { maxDepth?: number }
+        ) => Promise<{ root: string; label: string }[]>
+      }
       terminal: {
         dispose: (id: string) => Promise<boolean>
         onData: (id: string, callback: (payload: string) => void) => () => void
@@ -452,16 +468,14 @@ export interface HermesPreviewWatch {
   path: string
 }
 
-export interface HermesWorktreeInfo {
-  // Main repo root — the shared grouping key for a checkout and all its linked
-  // worktrees.
-  repoRoot: string
-  // This cwd's own worktree root.
-  worktreeRoot: string
-  // True when this is the repo's primary checkout (.git is a directory).
-  isMainWorktree: boolean
-  // Current branch (or short detached-HEAD sha), null when unreadable.
+// A real git worktree as reported by `git worktree list` (source of truth for
+// the "Start work" flow), as opposed to the session-cwd-derived grouping above.
+export interface HermesGitWorktree {
+  path: string
   branch: null | string
+  isMain: boolean
+  detached: boolean
+  locked: boolean
 }
 
 export interface HermesReadDirEntry {
